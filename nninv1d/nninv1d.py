@@ -11,12 +11,12 @@ import os
 # from keras.utils import np_utils
 gpu_id = 1
 import tensorflow as tf
-print(tf.__version__)
-if tf.__version__ >= "2.1.0":
-    physical_devices = tf.config.list_physical_devices('GPU')
-    tf.config.list_physical_devices('GPU')
-    tf.config.set_visible_devices(physical_devices[gpu_id], 'GPU')
-    tf.config.experimental.set_memory_growth(physical_devices[gpu_id], True)
+# print(tf.__version__)
+# if tf.__version__ >= "2.1.0":
+#     physical_devices = tf.config.list_physical_devices('GPU')
+#     tf.config.list_physical_devices('GPU')
+#     tf.config.set_visible_devices(physical_devices[gpu_id], 'GPU')
+#     tf.config.experimental.set_memory_growth(physical_devices[gpu_id], True)
 
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation, Dropout
@@ -24,12 +24,16 @@ from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.models import load_model
-from tensorflow.distribute import MirroredStrategy
+# from tensorflow.distribute import MirroredStrategy
 #from keras.utils.visualize_util import plot
 import tensorflow.keras.callbacks
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+import netCDF4
+import glob
+import pandas as pd
+import pdb
 
 #Global variables for normalizing parameters
 max_x = 1.0
@@ -44,9 +48,9 @@ def deep_learning_turbidite(resdir,
                             X_test_raw,
                             y_test_raw,
                             lr=0.02,
-                            decay=0,
+                            decay=None,
                             validation_split=0.2,
-                            batch_size=32,
+                            batch_size=2,
                             momentum=0.9,
                             nesterov=True,
                             num_layers=4,
@@ -86,7 +90,7 @@ def deep_learning_turbidite(resdir,
     # Compilation of the model
     model.compile(
         loss="mean_squared_error",
-        optimizer=SGD(lr=lr, decay=decay, momentum=momentum,
+        optimizer=SGD(learning_rate=lr, weight_decay=decay, momentum=momentum,
                       nesterov=nesterov),
         #optimizer=Adadelta(),
         metrics=["mean_squared_error"])
@@ -124,7 +128,7 @@ def apply_model(model, X, min_x, max_x, min_y, max_y):
     return Y
 
 
-def plot_history(history):
+def plot_history(history, savedir):
     # plot training history
     plt.plot(history.history['mean_squared_error'], "o-", label="mse")
     plt.plot(history.history['val_mean_squared_error'], "o-", label="val mse")
@@ -132,8 +136,11 @@ def plot_history(history):
     plt.xlabel('epoch')
     plt.ylabel('mse')
     plt.legend(loc="upper right")
-    plt.show()
+    plt.savefig(os.path.join(savedir, "history.svg"))
 
+def save_history(history, dirpath):
+    history_df = pd.DataFrame(history.history)
+    history_df.to_csv(os.path.join(dirpath,'history.csv'))
 
 def test_model(model, x_test):
     #test the model
@@ -159,7 +166,7 @@ def save_result(savedir, model=None, history=None, test_result=None):
                    history.history.get('val_loss'),
                    delimiter=',')
 
-     if model is not None:
+    if model is not None:
         print('save the model')
         model.save(savedir + 'model.hdf5')
 
@@ -205,61 +212,199 @@ def get_raw_data(x_norm, min_val, max_val):
 
     return x
 
+def read_data(data_folder, target_variable_names, data_variable_names, 
+                  cood_file):
+
+        """Load dataset from file list (format is netCDF4), and connect
+           multiple files.
+           
+           Parameters
+           ------------------
+           data_folder : string
+               Name a folder in which all data files are preserved.
+
+           targat_variable_names : list, string
+               Name of variables that are target of inversion
+            
+           data_variable_names : list, string
+                Name of variables that are inputs of inversion
+           
+           cood_file : string
+                Filepath of a csv file with coordintes to be extracted
+        """
+
+        original_dataset = np.empty(0)
+        target_dataset = np.empty(0)
+
+        filelist = glob.glob(os.path.join(data_folder, '*.nc'))
+        for f in filelist:
+            dfile = netCDF4.Dataset(os.path.join(data_folder, f), 'r')
+            num_runs = dfile.dimensions['run_no'].size
+
+            # check Nan
+            for j in range(num_runs):
+                check_nan = []
+                for k in data_variable_names:
+                    check_data = (np.max(np.isnan(
+                        dfile[k][j])) == False) 
+                    check_nan.append(check_data)
+
+                # if there is no Nan, create ndarray of target and data variable
+                if all(check_nan):
+
+                    # create ndarray of target variable
+                    target_arr = np.empty(0)
+                    for target_name in target_variable_names:
+                        target = np.array(dfile[target_name][j])
+                        if len(target_arr) < 1:
+                            target_arr = target
+                        elif len(target_arr) >= 1:
+                            target_arr = np.append(target_arr, target)
+                    target_arr = target_arr[np.newaxis,:]
+                    if len(target_dataset)<1:
+                        target_dataset =target_arr
+                    elif len(target_dataset)>=1:
+                        target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
+
+                    # create ndarray of data variable
+                    cood_data = pd.read_csv(cood_file, header=0)
+                    cood = cood_data.to_numpy()
+                    x = cood[:, 0]
+                    y = cood[:, 1]
+                    original_data_row = np.zeros((1, (len(data_variable_names))))
+                    for l in range(len(data_variable_names)):
+                        original_data_i = np.zeros(len(x))
+                        for i in range(len(x)):
+                            original_data_i[i] = np.array(dfile[data_variable_names[l]][j, x[i], y[i]])
+                        original_data_row[0, l] = original_data_i
+                    if len(original_dataset) == 0:
+                        original_dataset = original_data_row
+                    else:
+                        original_dataset = np.concatenate([original_dataset, original_data_row], axis=0)
+        
+        return original_dataset, target_dataset
+
+def preprocess(original_dataset, target_dataset, num_test, num_train=None):
+
+    """This is the method that separates training dataset from test dataset.
+    """
+    num_data = original_dataset.shape[0]
+    if num_train is None:
+        num_train = num_data - num_test
+    elif num_train > num_data - num_test:
+        num_train = num_data - num_test
+    elif num_test > num_data:
+        raise ValueError('num_test is larger than num_data.')
+
+    print('number of data is {}'.format(num_data))
+    print('number of training data is {}'.format(num_train))
+    print('number of test data is {}'.format(num_test))
+
+    x_train_raw = original_dataset[0:(num_data - num_test)]
+    x_test_raw = original_dataset[(num_data - num_test):]
+    y_train_raw = target_dataset[0:(num_data - num_test)]
+    y_test_raw = target_dataset[(num_data - num_test):]
+
+    norm_x = np.array([-0.01, 0.01])
+    norm_y = np.array(
+        [np.min(y_train_raw, axis=0),
+            np.max(y_train_raw, axis=0)])
+    x_train = np.zeros_like(x_train_raw)
+    x_test = np.zeros_like(x_test_raw)
+
+    y_train = np.zeros(y_train_raw.shape)
+    y_test = np.zeros(y_test_raw.shape)
+    x_train[:, :] = x_train_raw
+    x_test[:, :] = x_test_raw
+
+    # normalization
+    y_train = (y_train_raw - norm_y[0]) / (norm_y[1] -
+                                                norm_y[0])
+    y_test = (y_test_raw - norm_y[0]) / (norm_y[1] -
+                                                norm_y[0])
+
+    return x_train, y_train, x_test, y_test, norm_y
+
+def reproduce_y(y, norm_y):
+        """reproduce y value that was preprocessed
+        """
+
+        # y_reproduced = (y + 1.0) / 2 * (
+        #     self.norm_y[1] - self.norm_y[0]) + self.norm_y[0]
+        y_reproduced = (y) * (norm_y[1] - norm_y[0]) + norm_y[0]
+
+        return y_reproduced
 
 if __name__ == "__main__":
+    # pdb.set_trace()
+    data_folder = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
+    resdir = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
+    cood_file = '/mnt/c/Users/Seiya/Desktop/yaml_test/cood.csv'
+    target_variable_names = ["C_ini", "U_ini", "endtime"]
+    data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3"]
+    original_dataset, target_dataset = read_data(data_folder, target_variable_names, data_variable_names, cood_file)
+    x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, 2, num_train=None)
 
-    # Load data
-    datadir_training_num = './distance/10/data'
-    resdir_training_num = './result_training_num_10'
-    if not os.path.exists(resdir_training_num):
-        os.mkdir(resdir_training_num)
-
-    x_train, y_train, x_test, y_test = load_data(datadir_training_num)
-
-    # Start training
-    # testcases_train_num = [500, 1000, 1500, 2000, 2500, 3000, 3500]
-    testcases_train_num = []
-    for i in range(len(testcases_train_num)):
-        resdir_case = os.path.join(resdir_training_num,
-                                   '{}/'.format(testcases_train_num[i]))
-        if not os.path.exists(resdir_case):
-            os.mkdir(resdir_case)
-        x_train_sub = x_train[0:testcases_train_num[i], :]
-        y_train_sub = y_train[0:testcases_train_num[i], :]
-        model, history = deep_learning_turbidite(resdir_case,
-                                                 x_train_sub,
-                                                 y_train_sub,
+    model, history = deep_learning_turbidite(resdir,
+                                                 x_train,
+                                                 y_train,
                                                  x_test,
                                                  y_test,
-                                                 epochs=20000,
+                                                 epochs=10,
                                                  num_layers=6)
-        # Verification and test
-        # model = load_model(os.path.join(resdir_case, 'model.hdf5'))
-        result = test_model(model, x_test)
-        save_result(resdir_case,
-                    model=model,
-                    history=history,
-                    test_result=result)
-        # save_result(resdir_case, test_result=result)
+    plot_history(history, resdir)
+    save_history(history, resdir)
 
-    # #load data 
-    # datadir_distance = './distance'
-    # resdir_distance = './result_distance_3500_2'
+    test_result_norm = model.predict(x_test)
+    test_result = reproduce_y(test_result_norm, norm_y)
+    test_original = reproduce_y(y_test, norm_y)
+    min_val = np.min(np.min([test_original, test_result], axis=0), axis=0)
+    min_val[min_val < 0] = 0
+    max_val = np.max(np.max([test_original, test_result], axis=0), axis=0)
+    # val_name = ['Concentration', 'Initial Radius', 'Initial Height']
+    val_name = ['$C_{1}$', '$C_{2}$','$C_{3}$','$C_{4}$', 'salinity', 'Initial Flow Velocity', 'Flow Duration']
+    units = ['', '', '', '', '' ,'(m/s)', '(s)']
+    fontname = 'Segoe UI'
 
-    # #学習の実行
-    # num_data = 3500
-    # # testcases_distance = [1, 2, 3, 4, 5, 10]
-    # testcases_distance = [15, 20, 25, 30]
-    # for i in range(len(testcases_distance)):
-    #     x_train, y_train, x_test, y_test = load_data(
-    #         os.path.join(datadir_distance, '{}'.format(testcases_distance[i]),
-    #                      'data'))
-    #     resdir_case = os.path.join(resdir_distance,
-    #                                '{}/'.format(testcases_distance[i]))
+    for i in range(test_result.shape[1]):
+        fig, ax = plt.subplots(1, 1, figsize=(3.93, 3.93),tight_layout=True)
+        ax.plot(test_original[:, i], test_result[:, i], 'o')
+        ax.plot([min_val[i], max_val[i] * 1.1], [min_val[i], max_val[i] * 1.1],
+                marker=None,
+                linewidth=2)
+        ax.set_title(val_name[i], fontsize=18, fontname=fontname)
+        ax.set_xlabel('Original Value' + units[i],
+                        fontsize=14,
+                        fontname=fontname)
+        ax.set_ylabel('Reconstructed Value' + units[i],
+                        fontsize=14,
+                        fontname=fontname)
+        ax.tick_params(labelsize=14)
+        ax.set_aspect('equal')
+        fig.patch.set_alpha(0)
+        plt.savefig(os.path.join(resdir, 'test_result{}.svg'.format(i)))
+        ax.cla()
+
+    np.savetxt(os.path.join(resdir, 'test_result.csv'), test_result, delimiter=',')
+    np.savetxt(os.path.join(resdir,'test_original.csv'), test_original, delimiter=',')
+    # Load data
+    # datadir_training_num = './distance/10/data'
+    # resdir_training_num = './result_training_num_10'
+    # if not os.path.exists(resdir_training_num):
+    #     os.mkdir(resdir_training_num)
+
+    # x_train, y_train, x_test, y_test = load_data(datadir_training_num)
+
+    # # Start training
+    # # testcases_train_num = [500, 1000, 1500, 2000, 2500, 3000, 3500]
+    # testcases_train_num = []
+    # for i in range(len(testcases_train_num)):
+    #     resdir_case = os.path.join(resdir_training_num,
+    #                                '{}/'.format(testcases_train_num[i]))
     #     if not os.path.exists(resdir_case):
     #         os.mkdir(resdir_case)
-    #     x_train_sub = x_train[0:num_data, :]
-    #     y_train_sub = y_train[0:num_data, :]
+    #     x_train_sub = x_train[0:testcases_train_num[i], :]
+    #     y_train_sub = y_train[0:testcases_train_num[i], :]
     #     model, history = deep_learning_turbidite(resdir_case,
     #                                              x_train_sub,
     #                                              y_train_sub,
@@ -267,9 +412,45 @@ if __name__ == "__main__":
     #                                              y_test,
     #                                              epochs=20000,
     #                                              num_layers=6)
-
-    #     
+    #     plot_history(history, resdir)
+    #     save_history(history, resdir)
+    #     # Verification and test
     #     # model = load_model(os.path.join(resdir_case, 'model.hdf5'))
     #     result = test_model(model, x_test)
-    #     save_result(resdir_case, model=model, history=history, test_result=result)
+    #     save_result(resdir_case,
+    #                 model=model,
+    #                 history=history,
+    #                 test_result=result)
     #     # save_result(resdir_case, test_result=result)
+
+    # # #load data 
+    # # datadir_distance = './distance'
+    # # resdir_distance = './result_distance_3500_2'
+
+    # # #学習の実行
+    # # num_data = 3500
+    # # # testcases_distance = [1, 2, 3, 4, 5, 10]
+    # # testcases_distance = [15, 20, 25, 30]
+    # # for i in range(len(testcases_distance)):
+    # #     x_train, y_train, x_test, y_test = load_data(
+    # #         os.path.join(datadir_distance, '{}'.format(testcases_distance[i]),
+    # #                      'data'))
+    # #     resdir_case = os.path.join(resdir_distance,
+    # #                                '{}/'.format(testcases_distance[i]))
+    # #     if not os.path.exists(resdir_case):
+    # #         os.mkdir(resdir_case)
+    # #     x_train_sub = x_train[0:num_data, :]
+    # #     y_train_sub = y_train[0:num_data, :]
+    # #     model, history = deep_learning_turbidite(resdir_case,
+    # #                                              x_train_sub,
+    # #                                              y_train_sub,
+    # #                                              x_test,
+    # #                                              y_test,
+    # #                                              epochs=20000,
+    # #                                              num_layers=6)
+
+    # #     
+    # #     # model = load_model(os.path.join(resdir_case, 'model.hdf5'))
+    # #     result = test_model(model, x_test)
+    # #     save_result(resdir_case, model=model, history=history, test_result=result)
+    # #     # save_result(resdir_case, test_result=result)
