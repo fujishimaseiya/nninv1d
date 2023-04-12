@@ -271,16 +271,16 @@ def read_data(data_folder, target_variable_names, data_variable_names,
                     cood = cood_data.to_numpy()
                     x = cood[:, 0]
                     y = cood[:, 1]
-                    original_data_row = np.zeros((1, (len(data_variable_names))))
+                    original_data_i = np.empty(0)
                     for l in range(len(data_variable_names)):
                         original_data_i = np.zeros(len(x))
                         for i in range(len(x)):
                             original_data_i[i] = np.array(dfile[data_variable_names[l]][j, x[i], y[i]])
-                        original_data_row[0, l] = original_data_i
-                    if len(original_dataset) == 0:
-                        original_dataset = original_data_row
+                        original_data_i = original_data_i[np.newaxis, :]
+                    if len(original_dataset)<1:
+                        original_dataset = original_data_i
                     else:
-                        original_dataset = np.concatenate([original_dataset, original_data_row], axis=0)
+                        original_dataset = np.concatenate([original_dataset, original_data_i], axis=0)
         
         return original_dataset, target_dataset
 
@@ -336,7 +336,7 @@ def reproduce_y(y, norm_y):
         return y_reproduced
 
 if __name__ == "__main__":
-    # pdb.set_trace()
+    pdb.set_trace()
     data_folder = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
     resdir = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
     cood_file = '/mnt/c/Users/Seiya/Desktop/yaml_test/cood.csv'
