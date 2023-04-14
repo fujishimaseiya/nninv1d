@@ -43,10 +43,10 @@ min_y = 0.0
 
 
 def deep_learning_turbidite(resdir,
-                            X_train_raw,
-                            y_train_raw,
-                            X_test_raw,
-                            y_test_raw,
+                            X_train,
+                            y_train,
+                            X_test,
+                            y_test,
                             lr=0.02,
                             decay=None,
                             validation_split=0.2,
@@ -61,10 +61,10 @@ def deep_learning_turbidite(resdir,
     Creating the inversion model of turbidity currents by deep learning
     """
     #Normalizing dataset
-    X_train = get_normalized_data(X_train_raw, min_x, max_x)
-    X_test = get_normalized_data(X_test_raw, min_x, max_x)
-    y_train = get_normalized_data(y_train_raw, min_y, max_y)
-    y_test = get_normalized_data(y_test_raw, min_y, max_y)
+    # X_train = get_normalized_data(X_train_raw, min_x, max_x)
+    # X_test = get_normalized_data(X_test_raw, min_x, max_x)
+    # y_train = get_normalized_data(y_train_raw, min_y, max_y)
+    # y_test = get_normalized_data(y_test_raw, min_y, max_y)
 
     # Generate the model
     # mirrored_strategy = MirroredStrategy()
@@ -96,25 +96,38 @@ def deep_learning_turbidite(resdir,
         metrics=["mean_squared_error"])
 
     # Start training
-    t = time.time()
-    check = ModelCheckpoint(filepath=os.path.join(resdir, "model.hdf5"),
-                            monitor='val_loss',
-                            save_freq=1000,
-                            save_weights_only=True,
-                            mode='min',
-                            save_best_only=True)
+    # t = time.time()
+    # check = ModelCheckpoint(filepath=os.path.join(resdir, "model.hdf5"),
+    #                         monitor='val_loss',
+    #                         save_freq=1000,
+    #                         save_weights_only=True,
+    #                         mode='min',
+    #                         save_best_only=True)
     #es_cb = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
-    tb_cb = TensorBoard(log_dir=os.path.join(resdir, 'logs'),
-                        histogram_freq=0,
-                        write_graph=False,
-                        write_images=False)
+    # tb_cb = TensorBoard(log_dir=os.path.join(resdir, 'logs'),
+    #                     histogram_freq=0,
+    #                     write_graph=False,
+    #                     write_images=False)
+    # history = model.fit(X_train,
+    #                     y_train,
+    #                     epochs=epochs,
+    #                     validation_split=validation_split,
+    #                     batch_size=batch_size,
+    #                     callbacks=[check, tb_cb])
+    log_dir = os.path.join(resdir, 'logdir')
+    if os.path.exists(log_dir):
+        import shutil
+        shutil.rmtree(log_dir)  # remove previous execution                                                                                                                                                                                                 
+    os.mkdir(log_dir)
     history = model.fit(X_train,
                         y_train,
                         epochs=epochs,
                         validation_split=validation_split,
                         batch_size=batch_size,
-                        callbacks=[check, tb_cb])
-
+                        callbacks=[TensorBoard(log_dir=log_dir)],
+                        shuffle=True,
+                        verbose=1
+                        )
     return model, history
 
 
@@ -253,18 +266,15 @@ def read_data(data_folder, target_variable_names, data_variable_names,
                 if all(check_nan):
 
                     # create ndarray of target variable
-                    target_arr = np.empty(0)
+                    target_data_row = np.empty(0)
                     for target_name in target_variable_names:
                         target = np.array(dfile[target_name][j])
-                        if len(target_arr) < 1:
-                            target_arr = target
-                        elif len(target_arr) >= 1:
-                            target_arr = np.append(target_arr, target)
-                    target_arr = target_arr[np.newaxis,:]
+                        target_data_row = np.append(target_data_row, target)
+                    target_data_row = target_data_row[np.newaxis, :]
                     if len(target_dataset)<1:
-                        target_dataset =target_arr
-                    elif len(target_dataset)>=1:
-                        target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
+                        target_dataset =target_data_row
+                    else:
+                        target_dataset = np.concatenate([target_dataset,target_data_row],axis=0)
 
                     # create ndarray of data variable
                     cood_data = pd.read_csv(cood_file, header=0)
@@ -337,24 +347,25 @@ def reproduce_y(y, norm_y):
 
 if __name__ == "__main__":
     pdb.set_trace()
-    data_folder = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
-    resdir = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
+    data_folder = '/mnt/c/Users/Seiya/Desktop/test_flowparam/4eq_2'
+    resdir = '/mnt/c/Users/Seiya/Desktop/test_flowparam/4eq_2'
     cood_file = '/mnt/c/Users/Seiya/Desktop/yaml_test/cood.csv'
-    target_variable_names = ["C_ini", "U_ini", "endtime"]
-    data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3"]
+    target_variable_names = ["Cf", "alpha_4eq", "r0"]
+    data_variable_names = ["layer_ave_vel", "layer_ave_conc_0", "layer_ave_conc_1", "layer_ave_conc_2", "layer_ave_conc_3", "flow_depth",
+                           "sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3"]
     original_dataset, target_dataset = read_data(data_folder, target_variable_names, data_variable_names, cood_file)
     x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, 2, num_train=None)
 
     model, history = deep_learning_turbidite(resdir,
-                                                 x_train,
-                                                 y_train,
-                                                 x_test,
-                                                 y_test,
-                                                 epochs=10,
-                                                 num_layers=6)
+                                            x_train,
+                                            y_train,
+                                            x_test,
+                                            y_test,
+                                            epochs=10,
+                                            num_layers=6)
     plot_history(history, resdir)
     save_history(history, resdir)
-
+    save_result(resdir, model=model)
     test_result_norm = model.predict(x_test)
     test_result = reproduce_y(test_result_norm, norm_y)
     test_original = reproduce_y(y_test, norm_y)
