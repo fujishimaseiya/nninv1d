@@ -213,7 +213,7 @@ def get_raw_data(x_norm, min_val, max_val):
     return x
 
 def read_data(data_folder, target_variable_names, data_variable_names, 
-                  cood_file):
+                  sed_samp_point_file, measurement_point_file):
 
         """Load dataset from file list (format is netCDF4), and connect
            multiple files.
@@ -256,10 +256,10 @@ def read_data(data_folder, target_variable_names, data_variable_names,
                     target_arr = np.empty(0)
                     for target_name in target_variable_names:
                         target = np.array(dfile[target_name][j])
-                        if len(target_arr) < 1:
-                            target_arr = target
-                        elif len(target_arr) >= 1:
-                            target_arr = np.append(target_arr, target)
+                        # if len(target_arr) < 1:
+                        #     target_arr = target
+                        # elif len(target_arr) >= 1:
+                        target_arr = np.append(target_arr, target)
                     target_arr = target_arr[np.newaxis,:]
                     if len(target_dataset)<1:
                         target_dataset =target_arr
@@ -267,15 +267,27 @@ def read_data(data_folder, target_variable_names, data_variable_names,
                         target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
 
                     # create ndarray of data variable
-                    cood_data = pd.read_csv(cood_file, header=0)
-                    cood = cood_data.to_numpy()
-                    x = cood[:, 0]
-                    y = cood[:, 1]
+                    # read sampling point of sediment and measurement point of flow condition
+                    sed_samp_point = pd.read_csv(sed_samp_point_file, header=0)
+                    measurement_point = pd.read_csv(measurement_point_file, header=0)
+                    sed_x = sed_samp_point["0-dim"].to_numpy()
+                    sed_y = sed_samp_point["1-dim"].to_numpy()
+                    flow_x = measurement_point["0-dim"].to_numpy()
+                    flow_y = measurement_point["1-dim"].to_numpy()
                     original_data_row = np.empty(0)
-                    for l in range(len(data_variable_names)):
-                        for i in range(len(x)):
-                            original_data = dfile[data_variable_names[l]][j, x[i], y[i]]
-                            original_data_row = np.append(original_data_row, original_data)
+                    for data_variable in data_variable_names:
+                        if "sed_volume_per_unit_area" in data_variable:
+                            for i in range(len(sed_x)):
+                                    original_data = dfile[data_variable][j, round(sed_x[i]), round(sed_y[i])]
+                                    original_data_row = np.append(original_data_row, original_data)
+                        else:
+                            for l in range(len(flow_x)):
+                                    if "layer_ave_vel" in data_variable:
+                                        original_data = -dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
+                                        original_data_row = np.append(original_data_row, original_data)
+                                    else:    
+                                        original_data = dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
+                                        original_data_row = np.append(original_data_row, original_data)
                         original_data_row = original_data_row[np.newaxis, :]
                     if len(original_dataset)<1:
                         original_dataset = original_data_row
@@ -338,11 +350,13 @@ def reproduce_y(y, norm_y):
 if __name__ == "__main__":
     pdb.set_trace()
     data_folder = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
-    resdir = '/mnt/c/Users/Seiya/Desktop/test_flowparam/3eq_2'
-    cood_file = '/mnt/c/Users/Seiya/Desktop/yaml_test/cood.csv'
-    target_variable_names = ["C_ini", "U_ini", "endtime"]
-    data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3"]
-    original_dataset, target_dataset = read_data(data_folder, target_variable_names, data_variable_names, cood_file)
+    resdir = '/mnt/c/Users/Seiya/Desktop/opt_test'
+    cood_file = '/mnt/c/Users/Seiya/Desktop/test_flowparam/fcn_test/sed_vol.csv'
+    measuremnt_point_file = '/mnt/c/Users/Seiya/Desktop/test_flowparam/fcn_test/mea_point.csv'
+    target_variable_names = ["Cf", "alpha_4eq", "r0"]
+    data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3",
+                           "layer_ave_vel", "layer_ave_conc_0", "layer_ave_conc_1", "layer_ave_conc_2", "layer_ave_conc_3", "flow_depth"]
+    original_dataset, target_dataset = read_data(data_folder, target_variable_names, data_variable_names, cood_file, measuremnt_point_file)
     x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, 2, num_train=None)
 
     model, history = deep_learning_turbidite(resdir,
