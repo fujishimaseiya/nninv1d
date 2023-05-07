@@ -34,6 +34,7 @@ import netCDF4
 import glob
 import pandas as pd
 import pdb
+import csv
 
 #Global variables for normalizing parameters
 max_x = 1.0
@@ -43,10 +44,10 @@ min_y = 0.0
 
 
 def deep_learning_turbidite(resdir,
-                            X_train_raw,
-                            y_train_raw,
-                            X_test_raw,
-                            y_test_raw,
+                            X_train,
+                            y_train,
+                            X_test,
+                            y_test,
                             lr=0.02,
                             decay=None,
                             validation_split=0.2,
@@ -61,10 +62,10 @@ def deep_learning_turbidite(resdir,
     Creating the inversion model of turbidity currents by deep learning
     """
     #Normalizing dataset
-    X_train = get_normalized_data(X_train_raw, min_x, max_x)
-    X_test = get_normalized_data(X_test_raw, min_x, max_x)
-    y_train = get_normalized_data(y_train_raw, min_y, max_y)
-    y_test = get_normalized_data(y_test_raw, min_y, max_y)
+#     X_train = get_normalized_data(X_train_raw, min_x, max_x)
+#     X_test = get_normalized_data(X_test_raw, min_x, max_x)
+#     y_train = get_normalized_data(y_train_raw, min_y, max_y)
+#     y_test = get_normalized_data(y_test_raw, min_y, max_y)
 
     # Generate the model
     # mirrored_strategy = MirroredStrategy()
@@ -96,28 +97,45 @@ def deep_learning_turbidite(resdir,
         metrics=["mean_squared_error"])
 
     # Start training
-    t = time.time()
-    check = ModelCheckpoint(filepath=os.path.join(resdir, "model.hdf5"),
-                            monitor='val_loss',
-                            save_freq=1000,
-                            save_weights_only=True,
-                            mode='min',
-                            save_best_only=True)
-    #es_cb = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
-    tb_cb = TensorBoard(log_dir=os.path.join(resdir, 'logs'),
-                        histogram_freq=0,
-                        write_graph=False,
-                        write_images=False)
-    history = model.fit(X_train,
+#     t = time.time()
+#     check = ModelCheckpoint(filepath=os.path.join(resdir, "model.hdf5"),
+#                             monitor='val_loss',
+#                             save_freq=1000,
+#                             save_weights_only=True,
+#                             mode='min',
+#                             save_best_only=True)
+#     #es_cb = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
+#     tb_cb = TensorBoard(log_dir=os.path.join(resdir, 'logs'),
+#                         histogram_freq=0,
+#                         write_graph=False,
+#                         write_images=False)
+#     history = model.fit(X_train,
+#                         y_train,
+#                         epochs=epochs,
+#                         validation_split=validation_split,
+#                         batch_size=batch_size,
+#                         callbacks=[check, tb_cb])
+    if os.path.exists(log_dir):
+      import shutil
+      shutil.rmtree(log_dir)  # remove previous execution
+    os.mkdir(log_dir)
+    history = model.fit(x_train,
                         y_train,
+                        batch_size=batch_size,
                         epochs=epochs,
                         validation_split=validation_split,
-                        batch_size=batch_size,
-                        callbacks=[check, tb_cb])
-
+                        callbacks=[TensorBoard(log_dir=log_dir)],
+                        shuffle=True,
+                        verbose=1)
+    plot_history(history, resdir)
+    save_history(resdir, history)
+    
     return model, history
 
-
+def save_history(dirpath, history):
+    history_df = pd.DataFrame(history.history)
+    history_df.to_csv(os.path.join(dirpath,'history.csv'))
+  
 def apply_model(model, X, min_x, max_x, min_y, max_y):
     """
     Apply the model to data sets
@@ -130,12 +148,16 @@ def apply_model(model, X, min_x, max_x, min_y, max_y):
 
 def plot_history(history, savedir):
     # plot training history
-    plt.plot(history.history['mean_squared_error'], "o-", label="mse")
-    plt.plot(history.history['val_mean_squared_error'], "o-", label="val mse")
-    plt.title('model mse')
-    plt.xlabel('epoch')
-    plt.ylabel('mse')
-    plt.legend(loc="upper right")
+    plt.plot(history.history['mean_squared_error'], "o-",markerfacecolor='darkgreen',
+                label="Training Data",
+                markeredgecolor='darkgreen',
+                color='darkgreen')
+    plt.plot(history.history['val_mean_squared_error'], "o-", color='orange', label="validation data")
+    plt.title('Model Training history', fontsize=18)
+    plt.xlabel('Epoch', fontsize=14)
+    plt.ylabel('Mean Squared Error', fontsize=14)
+    plt.legend(loc="upper right", , fontsize=14)
+    fig.patch.set_alpha(0)
     plt.savefig(os.path.join(savedir, "history.svg"))
 
 def save_history(history, dirpath):
@@ -296,7 +318,7 @@ def read_data(data_folder, target_variable_names, data_variable_names,
         
         return original_dataset, target_dataset
 
-def preprocess(original_dataset, target_dataset, num_test, num_train=None):
+def preprocess(original_dataset, target_dataset, num_test, num_train=None, savedir=""):
 
     """This is the method that separates training dataset from test dataset.
     """
@@ -316,6 +338,11 @@ def preprocess(original_dataset, target_dataset, num_test, num_train=None):
     x_test_raw = original_dataset[(num_data - num_test):]
     y_train_raw = target_dataset[0:(num_data - num_test)]
     y_test_raw = target_dataset[(num_data - num_test):]
+    
+    with open(os.path.join(savedir, "num_data.csv"), "w", newline="") as f:
+      writer = csv.writer(f)
+      header = ['num_data', 'num_train', 'num_test']
+      writer.writerow(header)
 
     norm_x = np.array([-0.01, 0.01])
     norm_y = np.array(
@@ -353,11 +380,12 @@ if __name__ == "__main__":
     resdir = '/mnt/c/Users/Seiya/Desktop/opt_test'
     cood_file = '/mnt/c/Users/Seiya/Desktop/test_flowparam/fcn_test/sed_vol.csv'
     measuremnt_point_file = '/mnt/c/Users/Seiya/Desktop/test_flowparam/fcn_test/mea_point.csv'
+    shutil.copy("nninv_1d.py", resdir)
     target_variable_names = ["Cf", "alpha_4eq", "r0"]
     data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3",
                            "layer_ave_vel", "layer_ave_conc_0", "layer_ave_conc_1", "layer_ave_conc_2", "layer_ave_conc_3", "flow_depth"]
     original_dataset, target_dataset = read_data(data_folder, target_variable_names, data_variable_names, cood_file, measuremnt_point_file)
-    x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, 2, num_train=None)
+    x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, 2, num_train=None, savedir=resdir)
 
     model, history = deep_learning_turbidite(resdir,
                                                  x_train,
@@ -375,9 +403,8 @@ if __name__ == "__main__":
     min_val = np.min(np.min([test_original, test_result], axis=0), axis=0)
     min_val[min_val < 0] = 0
     max_val = np.max(np.max([test_original, test_result], axis=0), axis=0)
-    # val_name = ['Concentration', 'Initial Radius', 'Initial Height']
-    val_name = ['$C_{1}$', '$C_{2}$','$C_{3}$','$C_{4}$', 'salinity', 'Initial Flow Velocity', 'Flow Duration']
-    units = ['', '', '', '', '' ,'(m/s)', '(s)']
+    val_name = ['Cf', 'alpha', '$r_{0}$', '$C_{1}$', '$C_{2}$','$C_{3}$','$C_{4}$', 'salinity', 'Initial Flow Velocity', 'Flow Duration']
+    units = ['', '', '', '', '', '', '', '' ,'(m/s)', '(s)']
     fontname = 'Segoe UI'
 
     for i in range(test_result.shape[1]):
