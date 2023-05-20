@@ -20,7 +20,7 @@ import tensorflow as tf
 
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation, Dropout
-from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.optimizers import SGD, Adagrad
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.models import load_model
@@ -35,6 +35,7 @@ import glob
 import pandas as pd
 import pdb
 import csv
+import shutil
 
 #Global variables for normalizing parameters
 max_x = 1.0
@@ -42,6 +43,8 @@ min_x = 0.0
 max_y = 1.0
 min_y = 0.0
 
+class ExcludeValue(Exception):
+    pass
 
 def deep_learning_turbidite(resdir,
                             X_train,
@@ -91,9 +94,9 @@ def deep_learning_turbidite(resdir,
     # Compilation of the model
     model.compile(
         loss="mean_squared_error",
-        optimizer=SGD(learning_rate=lr, weight_decay=decay, momentum=momentum,
-                      nesterov=nesterov),
-        #optimizer=Adadelta(),
+        # optimizer=SGD(learning_rate=lr, weight_decay=decay, momentum=momentum,
+        #               nesterov=nesterov),
+        optimizer=Adagrad(),
         metrics=["mean_squared_error"])
 
     # Start training
@@ -115,9 +118,10 @@ def deep_learning_turbidite(resdir,
 #                         validation_split=validation_split,
 #                         batch_size=batch_size,
 #                         callbacks=[check, tb_cb])
+    log_dir = os.path.join(resdir, 'logdir')
     if os.path.exists(log_dir):
-      import shutil
-      shutil.rmtree(log_dir)  # remove previous execution
+        import shutil
+        shutil.rmtree(log_dir)  # remove previous execution
     os.mkdir(log_dir)
     history = model.fit(x_train,
                         y_train,
@@ -156,7 +160,7 @@ def plot_history(history, savedir):
     plt.title('Model Training history', fontsize=18)
     plt.xlabel('Epoch', fontsize=14)
     plt.ylabel('Mean Squared Error', fontsize=14)
-    plt.legend(loc="upper right", , fontsize=14)
+    plt.legend(loc="upper right", fontsize=14)
     fig.patch.set_alpha(0)
     plt.savefig(os.path.join(savedir, "history.svg"))
 
@@ -190,7 +194,7 @@ def save_result(savedir, model=None, history=None, test_result=None):
 
     if model is not None:
         print('save the model')
-        model.save(savedir + 'model.hdf5')
+        model.save(os.path.join(savedir + 'model.hdf5'))
 
 
 def load_data(datadir):
@@ -234,7 +238,7 @@ def get_raw_data(x_norm, min_val, max_val):
 
     return x
 
-def read_data(data_folder, target_variable_names, data_variable_names, 
+def read_data(data_folder, savedir, target_variable_names, data_variable_names, 
                   sed_samp_point_file, measurement_point_file):
 
         """Load dataset from file list (format is netCDF4), and connect
@@ -273,49 +277,63 @@ def read_data(data_folder, target_variable_names, data_variable_names,
 
                 # if there is no Nan, create ndarray of target and data variable
                 if all(check_nan):
-
-                    # create ndarray of target variable
-                    target_arr = np.empty(0)
-                    for target_name in target_variable_names:
-                        target = np.array(dfile[target_name][j])
-                        # if len(target_arr) < 1:
-                        #     target_arr = target
-                        # elif len(target_arr) >= 1:
-                        target_arr = np.append(target_arr, target)
-                    target_arr = target_arr[np.newaxis,:]
-                    if len(target_dataset)<1:
-                        target_dataset =target_arr
-                    elif len(target_dataset)>=1:
-                        target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
-
-                    # create ndarray of data variable
-                    # read sampling point of sediment and measurement point of flow condition
-                    sed_samp_point = pd.read_csv(sed_samp_point_file, header=0)
-                    measurement_point = pd.read_csv(measurement_point_file, header=0)
-                    sed_x = sed_samp_point["0-dim"].to_numpy()
-                    sed_y = sed_samp_point["1-dim"].to_numpy()
-                    flow_x = measurement_point["0-dim"].to_numpy()
-                    flow_y = measurement_point["1-dim"].to_numpy()
-                    original_data_row = np.empty(0)
-                    for data_variable in data_variable_names:
-                        if "sed_volume_per_unit_area" in data_variable:
-                            for i in range(len(sed_x)):
-                                    original_data = dfile[data_variable][j, round(sed_x[i]), round(sed_y[i])]
-                                    original_data_row = np.append(original_data_row, original_data)
+                    try:
+                        # create ndarray of data variable
+                        # read sampling point of sediment and measurement point of flow condition
+                        sed_samp_point = pd.read_csv(sed_samp_point_file, header=0)
+                        measurement_point = pd.read_csv(measurement_point_file, header=0)
+                        sed_x = sed_samp_point["0-dim"].to_numpy()
+                        sed_y = sed_samp_point["1-dim"].to_numpy()
+                        flow_x = measurement_point["0-dim_vel"].to_numpy()
+                        flow_y = measurement_point["1-dim_vel"].to_numpy()
+                        conc_x = measurement_point["0-dim_conc"].to_numpy()
+                        conc_y = measurement_point["1-dim_conc"].to_numpy()
+                        original_data_row = np.empty(0)
+                        for data_variable in data_variable_names:
+                            if "sed_volume_per_unit_area" in data_variable:
+                                for i in range(len(sed_x)):
+                                        original_data = dfile[data_variable][j, round(sed_x[i]), round(sed_y[i])]
+                                        original_data_row = np.append(original_data_row, original_data)
+                            else:
+                                for l in range(len(flow_x)):
+                                        if "layer_ave_vel" in data_variable:
+                                            original_data = -dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
+                                            original_data_row = np.append(original_data_row, original_data)
+                                        elif "layer_ave_conc" in data_variable:
+                                            original_data = dfile[data_variable][j, round(conc_x[l]), round(conc_y[l])]
+                                            original_data_row = np.append(original_data_row, original_data)
+                                        else:    
+                                            original_data = dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
+                                            original_data_row = np.append(original_data_row, original_data)
+                            original_data_row = original_data_row[np.newaxis, :]
+                        if len(original_dataset)<1:
+                            original_dataset = original_data_row
                         else:
-                            for l in range(len(flow_x)):
-                                    if "layer_ave_vel" in data_variable:
-                                        original_data = -dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
-                                        original_data_row = np.append(original_data_row, original_data)
-                                    else:    
-                                        original_data = dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
-                                        original_data_row = np.append(original_data_row, original_data)
-                        original_data_row = original_data_row[np.newaxis, :]
-                    if len(original_dataset)<1:
-                        original_dataset = original_data_row
-                    else:
-                        original_dataset = np.concatenate([original_dataset, original_data_row], axis=0)
-        
+                            original_dataset = np.concatenate([original_dataset, original_data_row], axis=0)
+
+                        # create ndarray of target variable
+                        target_arr = np.empty(0)
+                        for target_name in target_variable_names:
+                            target = np.array(dfile[target_name][j])
+                            # if len(target_arr) < 1:
+                            #     target_arr = target
+                            # elif len(target_arr) >= 1:
+                            target_arr = np.append(target_arr, target)
+                        target_arr = target_arr[np.newaxis,:]
+                        if len(target_dataset)<1:
+                            target_dataset =target_arr
+                        elif len(target_dataset)>=1:
+                            target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
+                    except:
+                        with open(os.path.join(savedir, "zero_data.csv"), "a", newline="") as f:
+                            writer = csv.writer(f)
+                            writer.writerow(j)
+
+                else:
+                    with open(os.path.join(savedir, "remove_data.csv"), "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(j)
+
         return original_dataset, target_dataset
 
 def preprocess(original_dataset, target_dataset, num_test, num_train=None, savedir=""):
@@ -381,10 +399,10 @@ if __name__ == "__main__":
     cood_file = '/mnt/c/Users/Seiya/Desktop/test_flowparam/fcn_test/sed_vol.csv'
     measuremnt_point_file = '/mnt/c/Users/Seiya/Desktop/test_flowparam/fcn_test/mea_point.csv'
     shutil.copy("nninv_1d.py", resdir)
-    target_variable_names = ["Cf", "alpha_4eq", "r0"]
+    target_variable_names = ["Cf", "alpha_4eq", "r0", "C_ini", "U_ini", "endtime"]
     data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3",
                            "layer_ave_vel", "layer_ave_conc_0", "layer_ave_conc_1", "layer_ave_conc_2", "layer_ave_conc_3", "flow_depth"]
-    original_dataset, target_dataset = read_data(data_folder, target_variable_names, data_variable_names, cood_file, measuremnt_point_file)
+    original_dataset, target_dataset = read_data(data_folder, resdir, target_variable_names, data_variable_names, cood_file, measuremnt_point_file)
     x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, 2, num_train=None, savedir=resdir)
 
     model, history = deep_learning_turbidite(resdir,
@@ -394,9 +412,9 @@ if __name__ == "__main__":
                                                  y_test,
                                                  epochs=10,
                                                  num_layers=6)
-    plot_history(history, resdir)
     save_history(history, resdir)
-
+    save_result(resdir, model=model)
+    plot_history(history, resdir)
     test_result_norm = model.predict(x_test)
     test_result = reproduce_y(test_result_norm, norm_y)
     test_original = reproduce_y(y_test, norm_y)
