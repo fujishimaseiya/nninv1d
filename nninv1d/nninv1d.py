@@ -306,6 +306,8 @@ def read_data(data_folder, savedir, target_variable_names, data_variable_names,
                                             original_data = dfile[data_variable][j, round(flow_x[l]), round(flow_y[l])]
                                             original_data_row = np.append(original_data_row, original_data)
                             original_data_row = original_data_row[np.newaxis, :]
+                        if all(original_data_row[0:len(sed_x)]==0):
+                            raise ExcludeValue
                         if len(original_dataset)<1:
                             original_dataset = original_data_row
                         else:
@@ -324,10 +326,10 @@ def read_data(data_folder, savedir, target_variable_names, data_variable_names,
                             target_dataset =target_arr
                         elif len(target_dataset)>=1:
                             target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
-                    except:
+                    except ExcludeValue as e:
                         with open(os.path.join(savedir, "zero_data.csv"), "a", newline="") as f:
                             writer = csv.writer(f)
-                            writer.writerow(j)
+                            writer.writerow('{}\n'.format(j))
 
                 else:
                     with open(os.path.join(savedir, "remove_data.csv"), "a", newline="") as f:
