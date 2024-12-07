@@ -21,7 +21,7 @@ import tensorflow as tf
 
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation, Dropout
-from tensorflow.keras.optimizers import SGD, Adagrad, Adam, Nadam, Adadelta, Adamax
+from tensorflow.keras.optimizers import SGD, Adagrad, Adam, Nadam, Adadelta, Adamax, RMSprop, Ftrl
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.models import load_model
@@ -50,8 +50,14 @@ def deep_learning_turbidite(resdir,
                             decay=None,
                             validation_split=0.2,
                             batch_size=2,
+                            activation_func='relu',
+                            activation_output='relu',
+                            initializer='he_uniform',
+                            loss_func="mean_squared_error",
+                            optimizer='Adagrad',
                             momentum=0.9,
                             nesterov=True,
+                            metrics="mean_squared_error",
                             num_layers=4,
                             dropout=0.5,
                             node_num=2000,
@@ -74,29 +80,48 @@ def deep_learning_turbidite(resdir,
     model.add(
         Dense(node_num,
               input_dim=X_train.shape[1],
-              activation='relu',
-              kernel_initializer='he_uniform'))
+              activation=activation_func,
+              kernel_initializer=initializer))
     model.add(Dropout(dropout))
     # hidden layer
     for i in range(num_layers - 2):
         model.add(
             Dense(node_num,
-                  activation='relu',
-                  kernel_initializer='he_uniform'))
+                  activation=activation_func,
+                  kernel_initializer=initializer))
         model.add(Dropout(dropout))
     # output layer
     model.add(
         Dense(y_train.shape[1],
-              activation='linear',
-              kernel_initializer='he_uniform'))
-
+              activation=activation_output,
+              kernel_initializer=initializer))
+    
+    if optimizer == 'Adagrad':
+        optimizer = Adagrad(learning_rate=lr)
+    elif optimizer == 'Adadelta':
+        optimizer = Adadelta(learning_rate=lr)
+    elif optimizer == 'SGD':
+        optimizer = SGD(learning_rate=lr,  momentum=momentum, nesterov=nesterov)
+    elif optimizer == 'Adam':
+        optimizer = Adam(learning_rate=lr)
+    elif optimizer == "RMSprop":
+        optimizer = RMSprop(learinig_rate=lr)
+    elif optimizer == 'Adamax':
+        optimizer = Adamax(learning_rate=lr)
+    elif optimizer == 'Nadam':
+        optimizer = Nadam(learning_rate=lr)
+    elif optimizer == 'Ftrl':
+        optimizer = Ftrl(learning_rate=lr)
+    else:
+        raise ValueError('Select the appropriate optimizer')
+    
     # Compilation of the model
     model.compile(
-        loss="mean_squared_error",
+        loss=loss_func,
         # optimizer=SGD(learning_rate=lr,  momentum=momentum,
         #              nesterov=nesterov),
-        optimizer=Adagrad(),
-        metrics=["mean_squared_error"])
+        optimizer=optimizer,
+        metrics=[metrics])
 
     # Start training
 #     t = time.time()
