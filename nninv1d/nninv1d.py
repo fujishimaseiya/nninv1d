@@ -402,6 +402,40 @@ def reproduce_y(y, norm_y):
 
         return y_reproduced
 
+def save_test_results(test_original, test_predicted, val_name, savedir):
+    test_original = pd.DataFrame(test_original, columns=val_name)
+    test_original.to_csv(os.path.join(savedir, 'test_original.csv'))
+    test_predicted = pd.DataFrame(test_predicted, columns=val_name)
+    test_predicted.to_csv(os.path.join(savedir, 'test_result.csv'))
+
+def plot_test_results(model, X_test, y_test, norm_y, val_name, units, savedir):
+    test_pred_norm = model.predict(X_test)
+    test_pred = reproduce_y(test_pred_norm, norm_y)
+    test_original = reproduce_y(y_test, norm_y)
+    save_test_results(test_original, test_pred, val_name, savedir)
+    plt.plot(test_original, test_pred, "o")
+    min_val = np.min(np.min([test_pred, test_original], axis=0), axis=0)
+    min_val[min_val < 0] = 0
+    max_val = np.max(np.max([test_pred, test_original], axis=0), axis=0)
+
+    for i in range(test_pred.shape[1]):
+        fig, ax = plt.subplots(1, 1, figsize=(3.93, 3.93), tight_layout=True)
+        ax.plot(test_original[:, i], test_pred[:, i], 'o')
+        ax.plot([min_val[i], max_val[i] * 1.1], [min_val[i], max_val[i] * 1.1],
+                marker=None,
+                linewidth=2)
+        ax.set_title(val_name[i], fontsize=18)
+        ax.set_xlabel('Original Value' + units[i],
+                        fontsize=14)
+        ax.set_ylabel('Reconstructed Value' + units[i],
+                        fontsize=14)
+        ax.tick_params(labelsize=14)
+        ax.set_aspect('equal')
+        fig.patch.set_alpha(0)
+        plt.savefig(os.path.join(savedir, 'test_result{}.svg'.format(i)))
+        ax.cla()
+    plt.close()
+
 if __name__ == "__main__":
     # pdb.set_trace()
     data_folder = '/mnt/sed_share2/fujishima/phd_research/data/exp2/run2/no_detrainment/no_erosion/after_cfrev/cf0.002_ro2/data'
