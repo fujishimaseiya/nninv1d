@@ -7,6 +7,7 @@ import os
 import shutil
 import pandas as pd
 from nninv1d import reproduce_y, read_data, preprocess, deep_learning_turbidite, plot_history, save_history, save_result, plot_test_results
+from validation import Validation
 
 if __name__ == "__main__":
     # pdb.set_trace()
@@ -24,9 +25,7 @@ if __name__ == "__main__":
     data_variable_names = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3"]
     original_dataset, target_dataset = read_data(data_folder, resdir, target_variable_names, data_variable_names, cood_file)
     x_train, y_train, x_test, y_test, norm_y = preprocess(original_dataset, target_dataset, num_test=100, num_train=None, savedir=resdir)
-    y_train = np.load(os.path.join(resdir,'y_train.npy'))
-    y_test = np.load(os.path.join(resdir,'y_test.npy'))
-    norm_y = np.load(os.path.join(resdir,'norm_y.npy'))
+
     model, history = deep_learning_turbidite(resdir,
                                              x_train,
                                              y_train,
@@ -79,6 +78,21 @@ if __name__ == "__main__":
     # val_name = ['Cf', '$r_{0}$', '$C_{1}$', '$C_{2}$','$C_{3}$','$C_{4}$', 'Salinity', 'Initial Flow Velocity', 'Flow Duration']
     units = ['', '', '' , '', '', ' (m/s)', ' (m)', ' (s)']
 
+    # validation of inverse model using flume experiment
+    validation = Validation()
+    validation.predict(model = model, 
+                       cood_file = cood_file, 
+                       savedir = resdir, 
+                       normx_file = None, 
+                       normy_file = None, 
+                       norm_y = norm_y,
+                       data_variable_names=["bed__sediment_volume_per_unit_area_0", 
+                                            "bed__sediment_volume_per_unit_area_1", 
+                                            "bed__sediment_volume_per_unit_area_2", 
+                                            "bed__sediment_volume_per_unit_area_3"], 
+                       val_list=['C0,1', 'C0,2', 'C0,3', 'C0,4', 'Salinity', 'U0', 'h0', 'Fd']
+                       )
+    
     for i in range(check_result.shape[1]):
         fig, ax = plt.subplots(1, 1, figsize=(3.93, 3.93),tight_layout=True)
         ax.plot(check_original[:, i], check_result[:, i], 'o')
