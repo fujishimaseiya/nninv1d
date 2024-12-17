@@ -9,9 +9,12 @@ import time
 import numpy as np
 import os
 # from keras.utils import np_utils
-# gpu_id = 
+gpu_id = 0
 import tensorflow as tf
-# os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
+physical_devices = tf.config.list_physical_devices('GPU')
+tf.config.set_visible_devices(physical_devices[gpu_id], 'GPU')
+tf.config.experimental.set_memory_growth(physical_devices[gpu_id], True)
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
 # print(tf.__version__)
 # if tf.__version__ >= "2.1.0":
 #     physical_devices = tf.config.list_physical_devices('GPU')
@@ -20,16 +23,14 @@ import tensorflow as tf
 #     tf.config.experimental.set_memory_growth(physical_devices[gpu_id], True)
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Activation, Dropout
+from tensorflow.keras.layers import Dense, Activation, Dropout, Input
 from tensorflow.keras.optimizers import SGD, Adagrad, Adam, Nadam, Adadelta, Adamax, RMSprop, Ftrl
-from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from tensorflow.keras.models import load_model
 import tensorflow.python.keras.backend as K
 from tensorflow.python import debug as tf_debug
 # from tensorflow.distribute import MirroredStrategy
 #from keras.utils.visualize_util import plot
-import tensorflow.keras.callbacks
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -76,10 +77,11 @@ def deep_learning_turbidite(resdir,
     # mirrored_strategy = MirroredStrategy()
     # with mirrored_strategy.scope():
     model = Sequential()
+    # input shape 
+    model.add(Input(shape=(X_train.shape[1],)))
     # input layer
     model.add(
         Dense(node_num,
-              input_dim=X_train.shape[1],
               activation=activation_func,
               kernel_initializer=initializer))
     model.add(Dropout(dropout))
@@ -125,12 +127,15 @@ def deep_learning_turbidite(resdir,
 
     # Start training
 #     t = time.time()
-#     check = ModelCheckpoint(filepath=os.path.join(resdir, "model.hdf5"),
-#                             monitor='val_loss',
-#                             save_freq=1000,
-#                             save_weights_only=True,
-#                             mode='min',
-#                             save_best_only=True)
+    model_checkpoint = ModelCheckpoint(filepath=os.path.join(resdir, "model.keras"),
+                            monitor='val_loss',
+                            verbose=0,
+                            save_best_only=True,
+                            save_weights_only=False,
+                            mode='min',
+                            save_freq='epoch',
+                            initial_value_threshold=None
+                            )
 #     #es_cb = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
 #     tb_cb = TensorBoard(log_dir=os.path.join(resdir, 'logs'),
 #                         histogram_freq=0,
@@ -152,7 +157,7 @@ def deep_learning_turbidite(resdir,
                         batch_size=batch_size,
                         epochs=epochs,
                         validation_split=validation_split,
-                        callbacks=[TensorBoard(log_dir=log_dir)],
+                        callbacks=[model_checkpoint, TensorBoard(log_dir=log_dir)],
                         shuffle=True,
                         verbose=1)
     
@@ -438,8 +443,8 @@ def plot_test_results(model, X_test, y_test, norm_y, val_name, units, savedir):
 
 if __name__ == "__main__":
     # pdb.set_trace()
-    data_folder = '/mnt/sed_share2/fujishima/phd_research/data/exp2/run2/no_detrainment/no_erosion/after_cfrev/cf0.002_ro2/data'
-    resdir = '/mnt/sed_share2/fujishima/phd_research/data/exp2/run2/no_detrainment/no_erosion/after_cfrev/cf0.002_ro2/inv_result/nonormx_8000_removeabn'
+    data_folder = '/home/biosphere/sed_share2/fujishima/phd_research/data/exp2/run2/no_detrainment/no_erosion/after_cfrev/cf0.002_ro2_c0.0001-0.01/data'
+    resdir = '/home/biosphere/sed_share2/fujishima/phd_research/data/exp2/run2/no_detrainment/no_erosion/after_cfrev/cf0.002_ro2_c0.0001-0.01/inv_result/remove_abn_12000'
     if not os.path.exists(resdir):
         os.mkdir(resdir)
     cood_file = '/mnt/sed_share2/fujishima/3d_model/exp2/diff_bed_run_1_2/sed_volume_run2/sed_dx0.05.csv'
@@ -461,14 +466,25 @@ if __name__ == "__main__":
     y_test = np.load(os.path.join(resdir,'y_test.npy'))
     norm_y = np.load(os.path.join(resdir,'norm_y.npy'))
     model, history = deep_learning_turbidite(resdir,
-                                             x_train,
-                                             y_train,
-                                             epochs=10000,
-                                             batch_size=2,
+                                             X_train=x_train,
+                                             y_train=y_train,
                                              lr=0.001,
-                                             dropout=0.1,
-                                             node_num=4000,
-                                             num_layers=6)
+                                             decay=None,
+                                             validation_split=0.2,
+                                             batch_size=2,
+                                            activation_func='relu',
+                                            activation_output='relu',
+                                            initializer='he_uniform',
+                                            loss_func="mean_squared_error",
+                                            optimizer='SGD',
+                                            momentum=0.9,
+                                            nesterov=True,
+                                            metrics="mean_squared_error",
+                                            num_layers=4,
+                                            dropout=0.1,
+                                            node_num=1000,
+                                            epochs=1
+                                            )
 
     save_history(history, resdir)
     save_result(resdir, model=model)
