@@ -10,13 +10,13 @@ with open('LICENSE') as f:
 
 setup(
     name='nninv1d',
-    version='0.1.0',
+    version='1.0.0',
     description=
     'Inverse model of sedimentary processes from their deposits by using a deep learning neural network',
     long_description=readme,
-    author='Hajime Naruse',
-    author_email='naruse@kueps.kyoto-u.ac.jp',
-    url='https://github.com/narusehajime/nninv1d',
+    author='Seiya Fujishima',
+    author_email='fujishima.seiya.78w@st.kyoto-u.ac.jp',
+    url='https://github.com/fujishimaseiya/nninv1d',
     license=license,
     install_requires=[
         'numpy',
