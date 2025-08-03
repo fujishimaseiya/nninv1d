@@ -1,57 +1,53 @@
 nninv1d
 ========================
 
+Overview
+---------------
 This is a code for inverse analysis of sedimentary processes by using a deep learning neural network. 
 
----------------
+
 Installation
-
-python setup.py install
-
 ---------------
-How to use
+You can install it by the following command::
 
-Usage of Matlab codes for simulation of turbidity currents
---------------
-exec_TurbSurge_mltest_new(folder_to_store_results, interval_to_output, time_to_end_simulation, model_input_parameters)
+    git clone https://github.com/fujishimaseiya/.nninv1d.git
 
-Usage of Matlab codes for producing training data sets
--------------
-exec_TurbSurge_mlsamples(folder_to_output_data, dummy_number, time_to_terminate_a_single_run, number_of_training_data)
+Alternatively, you can install using the setup script::
+
+    python setup.py install
 
 
-Usage of NN codes
------------
-import nninv1d
-import os
+Usage
+---------------
+To use this package, run the script `do_inv.py`.
+The script internally defines and uses the following parameters:
 
-# Load data
-datadir_training_num = './distance/10/data'
-resdir_training_num = './result_training_num_10'
-if not os.path.exists(resdir_training_num):
-    os.mkdir(resdir_training_num)
-
-x_train, y_train, x_test, y_test = nninv1d.load_data(datadir_training_num)
-
-# Start training
-testcases_train_num = [500, 1000, 1500, 2000, 2500, 3000, 3500]
-for i in range(len(testcases_train_num)):
-    resdir_case = os.path.join(resdir_training_num,
-                               '{}/'.format(testcases_train_num[i]))
-    if not os.path.exists(resdir_case):
-        os.mkdir(resdir_case)
-    x_train_sub = x_train[0:testcases_train_num[i], :]
-    y_train_sub = y_train[0:testcases_train_num[i], :]
-    model, history = nninv1d.deep_learning_turbidite(resdir_case,
-                                             x_train_sub,
-                                             y_train_sub,
-                                             x_test,
-                                             y_test,
-                                             epochs=20000,
-                                             num_layers=6)
-# Verification and test
-model = nninv1d.load_model(os.path.join(resdir_case, 'model.hdf5'))
-result = nninv1d.test_model(model, x_test)
-save_result(resdir_case, model=model, history=history, test_result=result)
+- ``data_folder``: Path to the folder that contains training dataset.
+- ``cood_file``: CSV file specifying coordinates of sampling points of deposits.
+- ``resdir``: Output directory for results. Created automatically if not existing.
+- ``target_variable_names``: Names of the target physical parameters to be estimated.
+- ``data_variable_names``: Names of input data variables such as sediment volume per unit area.
 
 
+Processing steps:
+---------------
+
+1. Load the input and target data from files.
+2. Normalize and split into training and test sets.
+3. Train the inverse model using deep learning.
+4. Save and plot the training history.
+5. Evaluate and visualize model performance on test data.
+6. Predict using real (e.g., flume experiment) data.
+7. Compare predicted and original values, then save them.
+
+
+Outputs:
+---------------
+
+- The following files will be generated inside `<resdir>/`:
+
+  - `test_result.csv`: Reconstructed values from the model
+  - `test_original.csv`: Original target values
+  - `test_resultX.svg`: Scatter plots for each parameter (reconstructed vs. original)
+  - `predict_result.csv`: Predicted values from the inverse model using real data`
+  - Training history plots and logs
