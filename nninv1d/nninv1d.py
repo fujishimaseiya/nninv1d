@@ -362,9 +362,11 @@ def preprocess(original_dataset, target_dataset, num_test=100, num_train=None, s
     print('number of training data is {}'.format(num_train))
     print('number of test data is {}'.format(num_test))
     x_train_raw = original_dataset[0:(num_train), :]
-    x_test_raw = original_dataset[num_train:(num_train+num_test):, :]
+    x_test_raw = original_dataset[-num_test:, :]
+    # x_test_raw = original_dataset[num_train:(num_train+num_test):, :]
     y_train_raw = target_dataset[0:(num_train), :]
-    y_test_raw = target_dataset[(num_train):(num_train+num_test), :]
+    y_test_raw = target_dataset[-num_test:, :]
+    # y_test_raw = target_dataset[(num_train):(num_train+num_test), :]
     np.save(os.path.join(savedir,"y_train_raw"), y_train_raw)
     np.save(os.path.join(savedir,"y_test_raw"), y_test_raw)
     
