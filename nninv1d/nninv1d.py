@@ -107,7 +107,7 @@ def deep_learning_turbidite(resdir,
     elif optimizer == 'Adam':
         optimizer = Adam(learning_rate=lr)
     elif optimizer == "RMSprop":
-        optimizer = RMSprop(learinig_rate=lr)
+        optimizer = RMSprop(learning_rate=lr)
     elif optimizer == 'Adamax':
         optimizer = Adamax(learning_rate=lr)
     elif optimizer == 'Nadam':
