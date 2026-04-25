@@ -173,15 +173,24 @@ def deep_learning_turbidite(resdir,
 #     return Y
 
 def plot_history(history, savedir):
-    # plot training history                                                                                                                                  
-    plt.plot(history.history['mean_squared_error'], "o-", label="Training")
-    plt.plot(history.history['val_mean_squared_error'], "o-", label="Validation")
-    plt.title('Training History', fontsize=18)
-    plt.xlabel('Epoch', fontsize=14)
-    plt.ylabel('Mean Squared Error', fontsize=14)
-    plt.legend(loc="upper right", fontsize=14)
-    plt.savefig(os.path.join(savedir, "history.svg"))
-    plt.close()
+    # plot training history                                
+    fig, ax = plt.subplots(constrained_layout=True)
+    ax.plot(history.history['mean_squared_error'], "o-", label="Training")
+    ax.plot(history.history['val_mean_squared_error'], "o-", label="Validation")
+    ax.set_title('Training History', fontsize=18)
+    ax.set_xlabel('Epoch', fontsize=14)
+    ax.set_ylabel('Mean Squared Error', fontsize=14)
+    ax.legend(loc="upper right", fontsize=14)
+    fig.savefig(os.path.join(savedir, "history.pdf"))
+    plt.close(fig)                                                                               
+    # plt.plot(history.history['mean_squared_error'], "o-", label="Training")
+    # plt.plot(history.history['val_mean_squared_error'], "o-", label="Validation")
+    # plt.title('Training History', fontsize=18)
+    # plt.xlabel('Epoch', fontsize=14)
+    # plt.ylabel('Mean Squared Error', fontsize=14)
+    # plt.legend(loc="upper right", fontsize=14)
+    # plt.savefig(os.path.join(savedir, "history.pdf"))
+    # plt.close()
 
 def save_history(history, dirpath):
     history_df = pd.DataFrame(history.history)
@@ -437,7 +446,7 @@ def plot_test_results(model, X_test, y_test, norm_y, val_name, units, savedir):
         ax.tick_params(labelsize=14)
         ax.set_aspect('equal')
         fig.patch.set_alpha(0)
-        plt.savefig(os.path.join(savedir, 'test_result{}.svg'.format(i)))
+        plt.savefig(os.path.join(savedir, 'test_result{}.pdf'.format(i)))
         ax.cla()
     plt.close()
 
