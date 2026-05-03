@@ -469,7 +469,7 @@ def plot_test_results(model, X_test, y_test, norm_y, val_name, units, savedir):
         fig.patch.set_alpha(0)
         plt.savefig(os.path.join(savedir, 'test_result{}.pdf'.format(i)))
         ax.cla()
-    plt.close()
+    plt.close(fig)
 
 if __name__ == "__main__":
     # pdb.set_trace()
