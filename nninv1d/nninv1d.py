@@ -267,84 +267,102 @@ def save_result(savedir, model=None, history=None, test_result=None):
 #     return x
 
 def read_data(data_folder, result_dir, target_variable_names, data_variable_names, 
-                  sed_samp_point_file):
+                  sed_samp_point_file, shuffle_data=False, seed=None):
+    """Load dataset from file list (format is netCDF4), and connect multiple files.
+    
+    Parameters
+    ------------------
+    data_folder : string
+        Name a folder in which all data files are preserved.
 
-        """Load dataset from file list (format is netCDF4), and connect
-           multiple files.
-           
-           Parameters
-           ------------------
-           data_folder : string
-               Name a folder in which all data files are preserved.
-
-           targat_variable_names : list, string
-               Name of variables that are target of inversion
+    target_variable_names : list, string
+        Name of variables that are target of inversion
             
-           data_variable_names : list, string
-                Name of variables that are inputs of inversion
+    data_variable_names : list, string
+        Name of variables that are inputs of inversion
            
-           cood_file : string
-                Filepath of a csv file with coordintes to be extracted
-        """
+    cood_file : string
+        Filepath of a csv file with coordintes to be extracted
 
-        original_dataset = np.empty(0)
-        target_dataset = np.empty(0)
-        filepath = os.path.join(data_folder, '**')
-        filelist = glob.glob(os.path.join(filepath, '*.nc'), recursive=True)
-        for f in filelist:
-            dfile = netCDF4.Dataset(os.path.join(data_folder, f), 'r')
-            num_runs = dfile.dimensions['run_no'].size
+    shuffle_data : bool, default False
+        Whether to shuffle data or not. If True, data is shuffled with the same order between original dataset and target dataset.
 
-            # check Nan
-            for j in range(num_runs):
-                check_nan = []
-                for k in data_variable_names:
-                    check_data = (
-                                 (np.max(np.isnan(dfile[k][j])) == False)
-                                  and (np.max(dfile[k][j]) < 0.5)
-                                  and (np.min(dfile[k][j] > -0.003))
-                                 )
-                    check_nan.append(check_data)
+    seed : int, default None
+        Random seed for shuffling data. If None, random seed is not set.
 
-                # if there is no Nan, create ndarray of target and data variable
-                if all(check_nan):
-                    try:
-                    # create ndarray of data variable
-                    # read sampling point of sediment and measurement point of flow condition
-                        sed_samp_point = pd.read_csv(sed_samp_point_file, header=0)
-                        sed_x = sed_samp_point["0-dim"].to_numpy()
-                        sed_y = sed_samp_point["1-dim"].to_numpy()
-                        original_data_row = np.empty(0)
-                        for data_variable in data_variable_names:
-                            if "sed_volume_per_unit_area" in data_variable:
-                                for i in range(len(sed_x)):
-                                    original_data = dfile[data_variable][j, sed_x[i], sed_y[i]]
-                                    original_data_row = np.append(original_data_row, original_data)
+    Returns
+    ------------------
+    original_dataset : ndarray
+        Dataset of input variables for inversion. The shape is (num_data, num_input_variables).
+    
+    target_dataset : ndarray
+        Dataset of target variables for inversion. The shape is (num_data, num_target_variables).
+    """
 
-                        if all(original_data_row<0.0001):
-                            raise Exclude_value
-                        original_data_row = original_data_row[np.newaxis, :]
-                        if len(original_dataset)<1:
-                            original_dataset = original_data_row
-                        else:
-                            original_dataset = np.concatenate([original_dataset, original_data_row], axis=0)
+    original_dataset = np.empty(0)
+    target_dataset = np.empty(0)
+    filepath = os.path.join(data_folder, '**')
+    filelist = glob.glob(os.path.join(filepath, '*.nc'), recursive=True)
+    for f in filelist:
+        dfile = netCDF4.Dataset(os.path.join(data_folder, f), 'r')
+        num_runs = dfile.dimensions['run_no'].size
 
-                        # create ndarray of target variable                                                                                                                                               
-                        target_arr = np.empty(0)
-                        for target_name in target_variable_names:
-                            target = np.array(dfile[target_name][j])                      
-                            target_arr = np.append(target_arr, target)
-                        target_arr = target_arr[np.newaxis,:]
-                        if len(target_dataset)<1:
-                            target_dataset =target_arr
-                        elif len(target_dataset)>=1:
-                            target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
-                    except Exclude_value as e:
-                        with open(os.path.join(result_dir,'remove_num.txt'), mode='a') as f:
-                            f.write('{}\n'.format(j))
-                        #print('Run no.{} was removed'.format(j))
-        
-        return original_dataset, target_dataset
+        # check Nan
+        for j in range(num_runs):
+            check_nan = []
+            for k in data_variable_names:
+                check_data = (
+                                (np.max(np.isnan(dfile[k][j])) == False)
+                            #   and (np.max(dfile[k][j]) < 0.5)
+                            #   and (np.min(dfile[k][j] > -0.003))
+                                )
+                check_nan.append(check_data)
+
+            # if there is no Nan, create ndarray of target and data variable
+            if all(check_nan):
+                try:
+                # create ndarray of data variable
+                # read sampling point of sediment and measurement point of flow condition
+                    sed_samp_point = pd.read_csv(sed_samp_point_file, header=0)
+                    sed_x = sed_samp_point["0-dim"].to_numpy()
+                    sed_y = sed_samp_point["1-dim"].to_numpy()
+                    original_data_row = np.empty(0)
+                    for data_variable in data_variable_names:
+                        if "sed_volume_per_unit_area" in data_variable:
+                            for i in range(len(sed_x)):
+                                original_data = dfile[data_variable][j, sed_x[i], sed_y[i]]
+                                original_data_row = np.append(original_data_row, original_data)
+
+                    if all(original_data_row<0.0001):
+                        raise Exclude_value
+                    original_data_row = original_data_row[np.newaxis, :]
+                    if len(original_dataset)<1:
+                        original_dataset = original_data_row
+                    else:
+                        original_dataset = np.concatenate([original_dataset, original_data_row], axis=0)
+
+                    # create ndarray of target variable                                                                                                                                               
+                    target_arr = np.empty(0)
+                    for target_name in target_variable_names:
+                        target = np.array(dfile[target_name][j])                      
+                        target_arr = np.append(target_arr, target)
+                    target_arr = target_arr[np.newaxis,:]
+                    if len(target_dataset)<1:
+                        target_dataset =target_arr
+                    elif len(target_dataset)>=1:
+                        target_dataset = np.concatenate([target_dataset,target_arr],axis=0)
+                except Exclude_value as e:
+                    with open(os.path.join(result_dir,'remove_num.txt'), mode='a') as f:
+                        f.write('{}\n'.format(j))
+                    #print('Run no.{} was removed'.format(j))
+    
+    if shuffle_data:
+        rng = np.random.default_rng(seed)
+        idx = rng.permutation(original_dataset.shape[0])
+        original_dataset = original_dataset[idx]
+        target_dataset = target_dataset[idx]
+
+    return original_dataset, target_dataset
 
 def preprocess(original_dataset, target_dataset, num_test=100, num_train=None, savedir=""):
 
@@ -361,6 +379,7 @@ def preprocess(original_dataset, target_dataset, num_test=100, num_train=None, s
     print('number of data is {}'.format(num_data))
     print('number of training data is {}'.format(num_train))
     print('number of test data is {}'.format(num_test))
+
     x_train_raw = original_dataset[0:(num_train), :]
     x_test_raw = original_dataset[-num_test:, :]
     # x_test_raw = original_dataset[num_train:(num_train+num_test):, :]
